@@ -1,0 +1,9 @@
+test_files/
+old/
+test3_files/
+gram.tab.c
+html
+lex.yy.c
+y.output
+y.tab.c
+y.tab.h
