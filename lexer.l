@@ -2,13 +2,16 @@
 #include <stdio.h>
 #include <string.h>
 #include "y.tab.h"
-
+#include <string>
+#include <stack>
+#include <iostream>
 #define TOKEN(type) return type
 
 extern YYSTYPE yylval;
 void yyerror(const char *msg);
 
 int rawtag = 0;
+extern std::stack<std::string> tstack;
 %}
 
 %option noyywrap
@@ -76,25 +79,52 @@ COMMENT_START "<!--"
 
 <RAWTEXT>{
     "</style>"   { 
-        BEGIN(INITIAL); 
         rawtag = 0; 
-        yylval.str = strdup("</");
-        yylval.str = strdup("style");
-        return CT; 
+        if (!tstack.empty()) {
+            std::string expected = tstack.top();
+            tstack.pop();
+            std::string ntag = "style";
+            if (expected != ntag) {
+                yyerror(("Mismatched tag </" + ntag + ">, expected </" + expected + ">").c_str());
+            }
+        }
+        BEGIN(INITIAL);
     }
     "</script>"   { 
-        BEGIN(INITIAL); 
         rawtag = 0; 
-        yylval.str = strdup("</");
-        yylval.str = strdup("script");
-        return CT; 
+        if (!tstack.empty()) {
+            std::string expected = tstack.top();
+            tstack.pop();
+            std::string ntag = "script";
+            if (expected != ntag) {
+                yyerror(("Mismatched tag </" + ntag + ">, expected </" + expected + ">").c_str());
+            }
+        }
+        BEGIN(INITIAL);
     }
     "</xml>"   { 
-        BEGIN(INITIAL); 
         rawtag = 0; 
-        yylval.str = strdup("</");
-        yylval.str = strdup("xml");
-        return CT; 
+        if (!tstack.empty()) {
+            std::string expected = tstack.top();
+            tstack.pop();
+            std::string ntag = "xml";
+            if (expected != ntag) {
+                yyerror(("Mismatched tag </" + ntag + ">, expected </" + expected + ">").c_str());
+            }
+        }
+        BEGIN(INITIAL);
+    }
+    "</code>"   { 
+        rawtag = 0; 
+        if (!tstack.empty()) {
+            std::string expected = tstack.top();
+            tstack.pop();
+            std::string ntag = "code";
+            if (expected != ntag) {
+                yyerror(("Mismatched tag </" + ntag + ">, expected </" + expected + ">").c_str());
+            }
+        }
+        BEGIN(INITIAL);
     }
     .|\n         {}
 }
@@ -102,10 +132,10 @@ COMMENT_START "<!--"
 <TAGSEC>{
     [a-zA-Z][a-zA-Z0-9\-]* {
         
-        printf("TAG: %s\n", yytext);
-        if (strcmp(yytext, "style")==0 || strcmp(yytext, "script")==0 || strcmp(yytext, "xml")==0){
+        //printf("TAG: %s\n", yytext);
+        if (strcmp(yytext, "style")==0 || strcmp(yytext, "script")==0 || strcmp(yytext, "xml")==0 || strcmp(yytext, "code")==0 ){
             rawtag = 1;
-            printf("RAW\n");
+            //printf("RAW\n");
             /*BEGIN(RAWTEXT);*/
         }
         yylval.str = strdup(yytext);
@@ -115,11 +145,13 @@ COMMENT_START "<!--"
 
     "/>" {
         BEGIN(INITIAL);
+        yylval.str = strdup("/>");
         return SCT;
     }
 
     ">" {
         BEGIN(INITIAL);
+        yylval.str = strdup(">");
         return CT;
     }
 
@@ -133,7 +165,7 @@ COMMENT_START "<!--"
 
 <INATTR>{
     [a-zA-Z_:][a-zA-Z0-9_\-.:]* {
-        printf("ATTR: %s\n", yytext);
+        //printf("ATTR: %s\n", yytext);
         yylval.str = strdup(yytext);
         return ATTR_NAME;
     }
@@ -141,7 +173,7 @@ COMMENT_START "<!--"
     "=" { return ATTR_ASSIGN; }
 
     "\""[^"]*"\"" {
-        printf("VAL: %s\n", yytext);
+        //printf("VAL: %s\n", yytext);
         yylval.str = strdup(yytext);
         return ATTR_VALUE;
     }
@@ -153,14 +185,18 @@ COMMENT_START "<!--"
 
     "/>" {
         BEGIN(INITIAL);
+        yylval.str = strdup("/>");
         return SCT;
     }
 
     ">" {
         if (rawtag) {
+            yylval.str = strdup(">");
             BEGIN(RAWTEXT);
+            return CT;
         }
         else {
+            yylval.str = strdup(">");
             BEGIN(INITIAL);
             return CT;
         }
