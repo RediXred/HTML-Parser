@@ -45,6 +45,11 @@ bool html_closed = false;
 bool head_opened = false;
 bool body_opened = false;
 bool in_body = false;
+
+bool title_opened = false;
+bool header_opened = false;
+bool footer_opened = false;
+bool main_opened = false;
 %}
 
 %union {
@@ -144,8 +149,25 @@ struct_open:
             body_opened = true;
             in_body = true;
         }
-
-        
+        else if (ntag == "title") {
+            if (!head_opened) {
+                yyerror("<title> must be inside <head>");
+            }
+            if (title_opened) {
+                yyerror("Duplicate <title> tag");
+            }
+            title_opened = true;
+        }
+        else if (ntag == "main") {
+            if (!body_opened) {
+                yyerror("<main> must be inside <body>");
+            }
+            if (main_opened) {
+                yyerror("Duplicate <main> tag");
+            }
+            main_opened = true;
+        }
+                
 
         if (!tstack.empty()) {
             std::string parent = tstack.top();
