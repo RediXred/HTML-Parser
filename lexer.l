@@ -1,12 +1,15 @@
 %{
+#ifdef _WIN32
+#include <io.h>
+#define isatty _isatty
+#endif
 #include <stdio.h>
 #include <string.h>
-#include "y.tab.h"
+#include "y.tab.hpp"
 #include <string>
 #include <stack>
 #include <iostream>
 #define TOKEN(type) return type
-
 extern YYSTYPE yylval;
 void yyerror(const char *msg);
 
