@@ -18,25 +18,21 @@ void yyerror(const char *s);
 void yyWarn(const char *s);
 
 
-struct TagRule {
+struct TagSt {
     std::vector<std::string> attributes;
     std::vector<std::string> parents;
     bool self_closing = false;
-    std::vector<std::string> inside_tags;
-    std::vector<std::pair<std::string, std::string>> required_if;
-    std::vector<std::pair<std::string, std::string>> allowed_if;
-    std::vector<std::string> to_use;
 };
 
-struct AttributeRule {
+struct AttrSt {
     std::string type;
     std::vector<std::string> values;
     std::string regex_pattern;
     std::regex regex;
 };
 
-std::unordered_map<std::string, TagRule> tags_db;
-std::unordered_map<std::string, AttributeRule> attrs_db;
+std::unordered_map<std::string, TagSt> tags_db;
+std::unordered_map<std::string, AttrSt> attrs_db;
 
 std::stack<std::string> tstack;
 
@@ -50,11 +46,12 @@ bool title_opened = false;
 bool header_opened = false;
 bool footer_opened = false;
 bool main_opened = false;
+
+bool warns = false;
 %}
 
 %union {
     char *str;
-    void *node;
     void *attr;
     struct {
         char *tag_name;
@@ -66,9 +63,8 @@ bool main_opened = false;
  
 %token <str> NTAG ATTR_NAME TXT OST CT SCT ATTR_VALUE
 
-%type <node> start elems elem struct_tag  
 %type <attr> attr
-%type <str>  struct_close
+%type <str>  struct_close start elems elem struct_tag
 %type <tag_info> struct_open attrs struct_ins
 %start start
 
@@ -247,7 +243,7 @@ attr:
             if (data_suffix.empty() || !std::regex_match(data_suffix, std::regex("^[a-zA-Z0-9-]+$"))) {
                 yyWarn(("Invalid data-* attribute name: " + attr_name).c_str());
             } else if (attrs_db.find("data-*") != attrs_db.end()) {
-                AttributeRule& rule = attrs_db["data-*"];
+                AttrSt& rule = attrs_db["data-*"];
                 if (attr_value.size() >= 2 && 
                     ((attr_value.front() == '"' && attr_value.back() == '"') ||
                      (attr_value.front() == '\'' && attr_value.back() == '\''))) {
@@ -263,16 +259,15 @@ attr:
             if (attrs_db.find(attr_name) == attrs_db.end()) {
                 yyWarn(("Unknown attribute: " + attr_name).c_str());
             } else {
-                // Проверяем, разрешён ли атрибут для текущего тега или в глобальных атрибутах
                 bool is_allowed = false;
                 if (!current_tag.empty()) {
-                    // Проверяем атрибуты текущего тега
+                    //локальные аттр
                     if (!tags_db[current_tag].attributes.empty() &&
                         std::find(tags_db[current_tag].attributes.begin(),
                                   tags_db[current_tag].attributes.end(), attr_name) != tags_db[current_tag].attributes.end()) {
                         is_allowed = true;
                     }
-                    // Проверяем глобальные атрибуты
+                    //глобальные
                     if (tags_db.find("global") != tags_db.end() &&
                         std::find(tags_db["global"].attributes.begin(),
                                   tags_db["global"].attributes.end(), attr_name) != tags_db["global"].attributes.end()) {
@@ -288,7 +283,7 @@ attr:
                      (attr_value.front() == '\'' && attr_value.back() == '\''))) {
                     attr_value = attr_value.substr(1, attr_value.size() - 2);
                 }
-                AttributeRule& rule = attrs_db[attr_name];
+                AttrSt& rule = attrs_db[attr_name];
                 if (rule.type == "enum") {
                     if (std::find(rule.values.begin(), rule.values.end(), attr_value) == rule.values.end()) {
                         yyerror(("Invalid value '" + attr_value + "' for attribute '" + attr_name + "'").c_str());
@@ -331,7 +326,6 @@ attr:
             if (attrs_db.find(attr_name) == attrs_db.end()) {
                 yyWarn(("Unknown attribute: " + attr_name).c_str());
             } else {
-                // Проверяем, разрешён ли атрибут для текущего тега или в глобальных атрибутах
                 bool is_allowed = false;
                 if (!current_tag.empty()) {
                     if (!tags_db[current_tag].attributes.empty() &&
@@ -388,14 +382,13 @@ void parse_tags_ini(const std::string& filename) {
         trim(line);
         if (line.empty() || line[0] == ';') continue;
 
-        // Обработка секции
+        //секция
         if (line[0] == '[') {
             current_section = line.substr(1, line.find(']') - 1);
             std::transform(current_section.begin(), current_section.end(), current_section.begin(), ::tolower);
             continue;
         }
-
-        // Разделение ключ-значение
+        //ключ-значение
         size_t delimiter_pos = line.find('=');
         if (delimiter_pos == std::string::npos) continue;
 
@@ -404,7 +397,6 @@ void parse_tags_ini(const std::string& filename) {
         trim(key);
         trim(value);
 
-        // Обработка разных полей
         if (key == "attributes") {
             for (auto& attr : split(value, ',')) {
                 trim(attr);
@@ -420,29 +412,6 @@ void parse_tags_ini(const std::string& filename) {
         else if (key == "self_closing") {
             tags_db[current_section].self_closing = (value == "1");
         }
-        else if (key == "inside_tags") {
-            for (auto& tag : split(value, ',')) {
-                trim(tag);
-                if (!tag.empty()) tags_db[current_section].inside_tags.push_back(tag);
-            }
-        }
-        else if (key == "required_if" || key == "allowed_if") {
-            size_t colon_pos = value.find(':');
-            if (colon_pos != std::string::npos) {
-                std::string condition = value.substr(colon_pos + 1);
-                std::string attribute = value.substr(0, colon_pos);
-                auto& target = (key == "required_if") ? 
-                    tags_db[current_section].required_if : 
-                    tags_db[current_section].allowed_if;
-                target.emplace_back(attribute, condition);
-            }
-        }
-        else if (key == "to_use") {
-            for (auto& part : split(value, '|')) {
-                trim(part);
-                tags_db[current_section].to_use.push_back(part);
-            }
-        }
     }
 }
 
@@ -454,13 +423,13 @@ void parse_attr_ini(const std::string& filename) {
         trim(line);
         if (line.empty() || line[0] == ';') continue;
 
-        // Обработка секции
+        //секция
         if (line[0] == '[') {
             current_attr = line.substr(1, line.find(']') - 1);
             continue;
         }
 
-        // Разделение ключ-значение
+        //ключ-значение
         size_t delimiter_pos = line.find('=');
         if (delimiter_pos == std::string::npos) continue;
 
@@ -469,12 +438,11 @@ void parse_attr_ini(const std::string& filename) {
         trim(key);
         trim(value);
 
-        // Инициализация записи для атрибута
+        //инициализация
         if (attrs_db.find(current_attr) == attrs_db.end()) {
-            attrs_db[current_attr] = AttributeRule{};
+            attrs_db[current_attr] = AttrSt{};
         }
 
-        // Обработка полей
         if (key == "type") {
             attrs_db[current_attr].type = value;
         }
@@ -520,9 +488,6 @@ int main(int argc, char *argv[]) {
         for (auto& attr : link.attributes) std::cout << attr << ", ";
         std::cout << std::endl << "Parents: ";
         for (auto& attr : link.parents) std::cout << attr << ", ";
-        std::cout << "\nRequired if:\n";
-        for (auto& [attr, cond] : link.required_if) {
-            std::cout << "  " << attr << " when " << cond << "\n";
         }
     }
     */
@@ -550,9 +515,12 @@ int main(int argc, char *argv[]) {
         yyerror(msg.c_str());
     }
     fclose(yyin);
-    if (parse_result == 0) {
+    if (parse_result == 0 && !warns) {
         fprintf(stdout, "Parsing successful\n");
-    } else {
+    } else if (warns) {
+        fprintf(stdout, "Parsed with warnings\n");
+    }
+    else {
         fprintf(stderr, "Parsing failed\n");
     }
     return parse_result;
@@ -560,9 +528,11 @@ int main(int argc, char *argv[]) {
 
 void yyerror(const char *s) {
     fprintf(stderr, "[Error at line %d]: %s\n", yylineno, s);
+    fprintf(stderr, "Parsing failed\n");
     exit(-1);
 }
 
 void yyWarn(const char *s) {
     fprintf(stderr, "[Warning at line %d]: %s\n", yylineno, s);
+    warns = true;
 }
