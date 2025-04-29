@@ -155,9 +155,6 @@ struct_open:
             title_opened = true;
         }
         else if (ntag == "main") {
-            if (!body_opened) {
-                yyerror("<main> must be inside <body>");
-            }
             if (main_opened) {
                 yyerror("Duplicate <main> tag");
             }
@@ -250,7 +247,7 @@ attr:
                     attr_value = attr_value.substr(1, attr_value.size() - 2);
                 }
                 if (!rule.regex_pattern.empty() && !std::regex_match(attr_value, rule.regex)) {
-                    yyWarn(("Value '" + attr_value + "' does not match pattern for attribute '" + attr_name + "'").c_str());
+                    yyerror(("Value '" + attr_value + "' does not match pattern for attribute '" + attr_name + "'").c_str());
                 }
             } else {
                 yyWarn("No rules defined for data-* attributes");
