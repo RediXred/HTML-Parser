@@ -9,7 +9,6 @@
 #include <string>
 #include <stack>
 #include <iostream>
-#define TOKEN(type) return type
 extern YYSTYPE yylval;
 void yyerror(const char *msg);
 
@@ -34,8 +33,8 @@ COMMENT_START "<!--"
 {WHITESPACE} {}
 {NEWLINE} {}
 
-"<!DOCTYPE"[ \t\n]*"html"[ \t\n]*">" { yylval.str = strdup("<!DOCTYPE html>"); TOKEN(DCTP); }
-"<!DOCTYPE"[ \t\n]*"HTML"[ \t\n]*">" { yylval.str = strdup("<!DOCTYPE html>"); TOKEN(DCTP); }
+"<!DOCTYPE"[ \t\n]*"html"[ \t\n]*">" { yylval.str = strdup("<!DOCTYPE html>"); return DCTP; }
+"<!DOCTYPE"[ \t\n]*"HTML"[ \t\n]*">" { yylval.str = strdup("<!DOCTYPE html>"); return DCTP; }
 
 {COMMENT_START} { BEGIN(COMMENT); }
 <COMMENT>{
